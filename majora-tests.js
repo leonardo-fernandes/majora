@@ -4,7 +4,7 @@ test("Empty", function() {
 
     nfa.begin();
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), []);
+    deepEqual(nfa.follow(), []);
 });
 
 test("Single token", function() {
@@ -12,11 +12,11 @@ test("Single token", function() {
 
     nfa.begin();
     equal(nfa.isFinal(), false);
-    deepEqual(nfa.follows(), ["T"]);
+    deepEqual(nfa.follow(), ["T"]);
 
     nfa.consume("T");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), []);
+    deepEqual(nfa.follow(), []);
 });
 
 test("Single function token", function() {
@@ -25,11 +25,11 @@ test("Single function token", function() {
 
     nfa.begin();
     equal(nfa.isFinal(), false);
-    deepEqual(nfa.follows(), [fn]);
+    deepEqual(nfa.follow(), [fn]);
 
     nfa.consume("t");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), []);
+    deepEqual(nfa.follow(), []);
 });
 
 test("Non-accepting", function() {
@@ -38,23 +38,23 @@ test("Non-accepting", function() {
     nfa.begin();
     nfa.consume("x");
     equal(nfa.isFinal(), false);
-    deepEqual(nfa.follows(), []);
+    deepEqual(nfa.follow(), []);
 });
 
 test("Concatenation", function() {
-    var nfa = NFA.concatenate(NFA.forToken("a"), NFA.forToken("b"));
+    var nfa = NFA.concatenation(NFA.forToken("a"), NFA.forToken("b"));
 
     nfa.begin();
     equal(nfa.isFinal(), false);
-    deepEqual(nfa.follows(), ["a"]);
+    deepEqual(nfa.follow(), ["a"]);
 
     nfa.consume("a");
     equal(nfa.isFinal(), false);
-    deepEqual(nfa.follows(), ["b"]);
+    deepEqual(nfa.follow(), ["b"]);
 
     nfa.consume("b");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), []);
+    deepEqual(nfa.follow(), []);
 });
 
 test("Union", function() {
@@ -62,16 +62,16 @@ test("Union", function() {
 
     nfa.begin();
     equal(nfa.isFinal(), false);
-    deepEqual(nfa.follows().sort(), ["a", "b"]);
+    deepEqual(nfa.follow().sort(), ["a", "b"]);
 
     nfa.consume("a");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), []);
+    deepEqual(nfa.follow(), []);
 
     nfa.begin();
     nfa.consume("b");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), []);
+    deepEqual(nfa.follow(), []);
 });
 
 test("Kleene", function() {
@@ -79,80 +79,82 @@ test("Kleene", function() {
 
     nfa.begin();
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), ["x"]);
+    deepEqual(nfa.follow(), ["x"]);
 
     nfa.consume("x");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), ["x"]);
+    deepEqual(nfa.follow(), ["x"]);
 
     nfa.consume("x");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), ["x"]);
+    deepEqual(nfa.follow(), ["x"]);
 });
 
 test("Complex", function() {
-    var nfa1 = NFA.concatenate(NFA.concatenate(NFA.forToken("a"), NFA.forToken("b")), NFA.forToken("c")) // abc
-    var nfa2 = NFA.concatenate(NFA.forToken("a"), NFA.kleene(NFA.forToken("b"))); // ab*
-    var nfa3 = NFA.kleene(NFA.concatenate(NFA.forToken("a"), NFA.forToken("b"))); // (ab)*
+    var nfa1 = NFA.concatenation(NFA.concatenation(NFA.forToken("a"), NFA.forToken("b")), NFA.forToken("c")) // abc
+    var nfa2 = NFA.concatenation(NFA.forToken("a"), NFA.kleene(NFA.forToken("b"))); // ab*
+    var nfa3 = NFA.kleene(NFA.concatenation(NFA.forToken("a"), NFA.forToken("b"))); // (ab)*
 
     var nfa = NFA.union(nfa1, NFA.union(nfa2, nfa3)); // abc | ab* | (ab)*
 
     nfa.begin();
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), ["a"]);
+    deepEqual(nfa.follow(), ["a"]);
 
     nfa.consume("a");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), ["b"]);
+    deepEqual(nfa.follow(), ["b"]);
 
     nfa.consume("b");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows().sort(), ["a", "b", "c"]);
+    deepEqual(nfa.follow().sort(), ["a", "b", "c"]);
 
     nfa.consume("b");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), ["b"]);
+    deepEqual(nfa.follow(), ["b"]);
 
     nfa.begin();
     nfa.consume("a");
     nfa.consume("b");
     nfa.consume("a");
     equal(nfa.isFinal(), false);
-    deepEqual(nfa.follows(), ["b"]);
+    deepEqual(nfa.follow(), ["b"]);
 
     nfa.consume("b");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), ["a"]);
+    deepEqual(nfa.follow(), ["a"]);
 
-    nfa = NFA.concatenate(nfa, nfa.clone()); // (abc | ab* | (ab)*) (abc | ab* | (ab)*)
+    nfa = NFA.concatenation(nfa, nfa.clone()); // (abc | ab* | (ab)*) (abc | ab* | (ab)*)
 
     nfa.begin();
     nfa.consume("a");
     nfa.consume("b");
     nfa.consume("c");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), ["a"]);
+    deepEqual(nfa.follow(), ["a"]);
 
     nfa.consume("a");
     nfa.consume("b");
     nfa.consume("c");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), []);
+    deepEqual(nfa.follow(), []);
 
     nfa.begin();
     nfa.consume("a");
     nfa.consume("b");
     nfa.consume("b");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows().sort(), ["a", "b"]);
+    deepEqual(nfa.follow().sort(), ["a", "b"]);
 
     nfa.consume("a");
     nfa.consume("b");
     nfa.consume("a");
     equal(nfa.isFinal(), false);
-    deepEqual(nfa.follows(), ["b"]);
+    deepEqual(nfa.follow(), ["b"]);
 
     nfa.consume("b");
     equal(nfa.isFinal(), true);
-    deepEqual(nfa.follows(), ["a"]);
+    deepEqual(nfa.follow(), ["a"]);
 });
+
+/* vim: set et ts=4 sw=4: */
