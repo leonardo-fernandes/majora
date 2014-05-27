@@ -19,7 +19,13 @@ var NFA = function() {
         state = closure(initials);
     };
 
-    this.consume = function(token) {
+    this.consume = function(string) {
+        for (var i = 0; i < string.length; i++) {
+            consumeToken(string[i]);
+        }
+    };
+
+    var consumeToken = function(token) {
         var newState = [];
         for (var i = 0; i < state.length; i++) {
             var s = state[i];
@@ -59,18 +65,18 @@ var NFA = function() {
         return result;
     };
 
-    this.follows = function() {
-        var follows = [];
+    this.follow = function() {
+        var follow = [];
         for (var i = 0; i < state.length; i++) {
             var s = state[i];
             for (var j = 0; j < s.edges.length; j++) {
                 var edge = s.edges[j];
-                if (edge.value !== NFA.EPSILON && follows.indexOf(edge.value) == -1) {
-                    follows.push(edge.value);
+                if (edge.value !== NFA.EPSILON && follow.indexOf(edge.value) == -1) {
+                    follow.push(edge.value);
                 }
             }
         }
-        return follows;
+        return follow;
     };
 
     var closure = function(nodes) {
@@ -155,7 +161,7 @@ NFA.forToken = function(token) {
     return result;
 };
 
-NFA.concatenate = function(nfa1, nfa2) {
+NFA.concatenation = function(nfa1, nfa2) {
     var result = new NFA();
     var nfa1Finals = [];
     var nfa2Initials = [];
@@ -241,9 +247,166 @@ NFA.kleene = function(nfa) {
     return nfa;
 };
 
+NFA.quantify = function(nfa, min, max) {
+    var result = NFA.empty();
+
+    for (var i = 0; i < min; i++) {
+        result = NFA.concatenation(result, nfa.clone());
+    }
+
+    for (var j = min; j < max; j++) {
+        var optional = NFA.union(NFA.empty(), nfa.clone());
+        result = NFA.concatenation(result, optional);
+    }
+
+    return result;
+};
 
 var PatternParser = function(pattern) {
-    var nfa = NFA.empty();
+    var i = -1;
+    var symbol = undefined;
+    var next = pattern[0];
 
+    /*
+     * union         = concatenation ("|" concatenation)*
+     * concatenation = ("(" union ")" quantifier? / terminal quantifier?)*
+     * quantifier    = "*" / "?" / "{" min "," max "}" / "{" exactly "}"
+     * terminal      = "[:digit:]" / "[:alpha:]" / "[:alnum:]" / [^()[]{}*?|]
+     */
 
+    var isEof = function() {
+        return next == undefined;
+    };
+    var peek = function() {
+        return next;
+    };
+    var read = function(expect) {
+        if (isEof() || expect && expect != next) {
+            error(expect);
+        } else {
+            symbol = pattern[++i];
+            next = pattern[i+1];
+            return symbol;
+        }
+    };
+    var error = function(expect) {
+        if (isEof()) {
+            throw "Unexpected end of input (expected " + expect + ")";
+        } else {
+            throw "Unexpected symbol " + next + " at position " + (i+1) + " (expected " + expect + ")";
+        }
+    };
+
+    var union = function() {
+        var nfa = concatenation();
+        while (peek() == "|") {
+            read("|");
+            nfa = NFA.union(nfa, concatenation());
+        }
+        return nfa;
+    };
+
+    var concatenation = function() {
+        var nfa = NFA.empty();
+        while (!isEof()) {
+            var nfaToken;
+            if (peek() == "(") {
+                read("(");
+                nfaToken = union();
+                read(")");
+            } else if (peek() == "\\") {
+                read("\\");
+                if (needsEscaping(peek())) {
+                    nfaToken = NFA.forToken(read());
+                } else {
+                    error("escape sequence");
+                }
+            } else if (!needsEscaping(peek())) {
+                nfaToken = NFA.forToken(read());
+            } else if (peek() == "[") {
+                nfaToken = charclass();
+            } else {
+                break;
+            }
+            nfaToken = quantifier(nfaToken);
+            nfa = NFA.concatenation(nfa, nfaToken);
+        }
+        return nfa;
+    };
+
+    var quantifier = function(nfa) {
+        if (peek() == "*") {
+            read("*");
+            return NFA.kleene(nfa);
+        } else if (peek() == "?") {
+            read("?");
+            return NFA.quantify(nfa, 0, 1);
+        } else if (peek() == "{") {
+            read("{");
+            var min = integer();
+            var max = min;
+            if (peek() == ",") {
+                read(",");
+                max = integer();
+            }
+            read("}");
+            return NFA.quantify(nfa, min, max);
+        } else {
+            return nfa;
+        }
+    };
+
+    var charclass = function() {
+        read("[");
+        read(":");
+        if (peek() == "d") {
+            read("d");
+            read("i");
+            read("g");
+            read("i");
+            read("t");
+            read(":");
+            read("]");
+            return NFA.forToken(function(token) { return /[0-9]/.test(token); });
+        } else if (peek() == "a") {
+            read("a");
+            read("l");
+            if (peek() == "p") {
+                read("p");
+                read("h");
+                read("a");
+                read(":");
+                read("]");
+                return NFA.forToken(function(token) { return /[a-zA-Z]/.test(token); });
+            } else if (peek() == "n") {
+                read("n");
+                read("u");
+                read("m");
+                read(":");
+                read("]");
+                return NFA.forToken(function(token) { return /[a-zA-Z0-9]/.test(token); });
+            } else {
+                error("character class");
+            }
+        } else {
+            error("character class");
+        }
+    };
+
+    var integer = function() {
+        var string = "";
+        while (/[0-9]/.test(peek())) {
+            string = string + read();
+        }
+        return Number(string);
+    };
+
+    var needsEscaping = function(token) {
+        return ["(", ")", "[", "]", "{", "}", "*", "?", "|"].indexOf(token) != -1;
+    };
+
+    this.nfa = union();
+    this.nfa.begin();
 };
+
+/* vim: set et ts=4 sw=4: */
