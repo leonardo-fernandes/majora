@@ -294,7 +294,6 @@ NFA.quantify = function(nfa, min, max) {
 
 var PatternParser = function(pattern) {
     var i = -1;
-    var symbol = undefined;
     var next = pattern[0];
 
     /*
@@ -305,32 +304,40 @@ var PatternParser = function(pattern) {
      */
 
     var isEof = function() {
-        return next == undefined;
+        return i+1 >= pattern.length;
     };
-    var peek = function() {
-        return next;
-    };
-    var read = function(expect) {
-        if (isEof() || expect && expect != next) {
-            error(expect);
+
+    var peek = function(string) {
+        if (string) {
+            return pattern.substr(i+1, string.length) == string;
         } else {
-            symbol = pattern[++i];
-            next = pattern[i+1];
-            return symbol;
+            return pattern[i+1];
         }
     };
-    var error = function(expect) {
-        if (isEof()) {
-            throw "Unexpected end of input (expected " + expect + ")";
-        } else {
-            throw "Unexpected symbol " + next + " at position " + (i+1) + " (expected " + expect + ")";
+    var read = function(string) {
+        for (var i = 0; i < string.length; i++) {
+            readToken(string[i]);
         }
+        return true;
+    };
+    var readToken = function(expect) {
+        if (isEof() || expect && expect != peek()) {
+            if (isEof()) {
+                throw "Unexpected end of input (expected " + expect + ")";
+            } else {
+                throw "Unexpected symbol " + peek() + " at position " + (i+1) + " (expected " + expect + ")";
+            }
+        } else {
+            return pattern[++i];
+        }
+    };
+    var peekAndRead = function(string) {
+        return peek(string) && read(string);
     };
 
     var union = function() {
         var nfa = concatenation();
-        while (peek() == "|") {
-            read("|");
+        while (peekAndRead("|")) {
             nfa = NFA.union(nfa, concatenation());
         }
         return nfa;
@@ -340,102 +347,93 @@ var PatternParser = function(pattern) {
         var nfa = NFA.empty();
         while (!isEof()) {
             var nfaToken;
-            if (peek() == "(") {
-                read("(");
+            if (peekAndRead("(")) {
                 nfaToken = union();
                 read(")");
-            } else if (peek() == "\\") {
-                read("\\");
-                if (needsEscaping(peek())) {
-                    nfaToken = NFA.forToken(read());
+            } else if (peekAndRead("\\")) {
+                if (escapes.indexOf(peek()) != -1) {
+                    nfaToken = NFA.forToken(readToken());
                 } else {
-                    error("escape sequence");
+                    throw "Invalid escape sequence at position " + (i+1);
                 }
-            } else if (!needsEscaping(peek())) {
-                nfaToken = NFA.forToken(read());
-            } else if (peek() == "[") {
+            } else if (peekAndRead("[")) {
                 nfaToken = charclass();
-            } else {
+                read("]");
+            } else if (peekAndRead(".")) {
+                nfaToken = NFA.forToken(function(token) { return true; });
+            } else if (peek(")") || peek("|")) {
                 break;
+            } else if (peekQuantifier()) {
+                throw "Invalid quantifier at position " + (i+1);
+            } else {
+                nfaToken = NFA.forToken(readToken());
             }
-            nfaToken = quantifier(nfaToken);
+
+            if (peekQuantifier()) {
+                nfaToken = quantifier(nfaToken);
+            }
             nfa = NFA.concatenation(nfa, nfaToken);
         }
         return nfa;
     };
 
+    var peekQuantifier = function() {
+        if (peek("*") || peek("+") || peek("?")) {
+            return true;
+        } else if (peek("{")) {
+            return pattern.substr(i+1).search(/\{\d+(,\d+)?\}/) == 0;
+        } else {
+            return false;
+        }
+    };
+
     var quantifier = function(nfa) {
-        if (peek() == "*") {
-            read("*");
+        if (peekAndRead("*")) {
             return NFA.kleene(nfa);
-        } else if (peek() == "?") {
-            read("?");
+        } else if (peekAndRead("+")) {
+            return NFA.concatenation(nfa, NFA.kleene(nfa.clone()));
+        } else if (peekAndRead("?")) {
             return NFA.quantify(nfa, 0, 1);
-        } else if (peek() == "{") {
-            read("{");
+        } else if (peekAndRead("{")) {
             var min = integer();
             var max = min;
-            if (peek() == ",") {
-                read(",");
+            if (peekAndRead(",")) {
                 max = integer();
             }
             read("}");
             return NFA.quantify(nfa, min, max);
         } else {
-            return nfa;
+            throw "Invalid quantifier at position " + (i+1);
         }
     };
 
     var charclass = function() {
-        read("[");
-        read(":");
-        if (peek() == "d") {
-            read("d");
-            read("i");
-            read("g");
-            read("i");
-            read("t");
-            read(":");
-            read("]");
+        if (peekAndRead(":digit:")) {
             return NFA.forToken(function(token) { return /[0-9]/.test(token); });
-        } else if (peek() == "a") {
-            read("a");
-            read("l");
-            if (peek() == "p") {
-                read("p");
-                read("h");
-                read("a");
-                read(":");
-                read("]");
-                return NFA.forToken(function(token) { return /[a-zA-Z]/.test(token); });
-            } else if (peek() == "n") {
-                read("n");
-                read("u");
-                read("m");
-                read(":");
-                read("]");
-                return NFA.forToken(function(token) { return /[a-zA-Z0-9]/.test(token); });
-            } else {
-                error("character class");
-            }
+        } else if (peekAndRead(":alpha:")) {
+            return NFA.forToken(function(token) { return /[a-zA-Z]/.test(token); });
+        } else if (peekAndRead(":alnum:")) {
+            return NFA.forToken(function(token) { return /[a-zA-Z0-9]/.test(token); });
         } else {
-            error("character class");
+            throw "Invalid character class at position " + (i+1);
         }
     };
 
     var integer = function() {
         var string = "";
         while (/[0-9]/.test(peek())) {
-            string = string + read();
+            string = string + readToken();
         }
         return Number(string);
     };
 
-    var needsEscaping = function(token) {
-        return ["(", ")", "[", "]", "{", "}", "*", "?", "|"].indexOf(token) != -1;
-    };
+    var escapes = ["(", ")", "[", "]", "{", "}", "*", "+", "?", "|", "\\", "."];
 
     this.nfa = union();
+    if (!isEof()) {
+        throw "Expected end of input at position " + (i+1) + " (found " + peek() + ")";
+    }
+
     this.nfa.begin();
 };
 
