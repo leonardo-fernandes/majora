@@ -38,7 +38,7 @@ var NFA = function() {
         }
 
         if (newState.length == 0) {
-            var evt = $.Event("not-accept");
+            var evt = $.Event("error");
             evt.token = token;
             $(self).triggerHandler(evt);
             if (evt.isDefaultPrevented()) {
@@ -60,6 +60,10 @@ var NFA = function() {
             }
         }
         return false;
+    };
+
+    this.isError = function() {
+        return state.length == 0;
     };
 
     this.clone = function() {
