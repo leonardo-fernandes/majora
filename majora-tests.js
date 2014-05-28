@@ -20,7 +20,7 @@ test("Single token", function() {
     deepEqual(nfa.follow(), []);
 });
 
-test("Single function token", function() {
+test("Function token", function() {
     var fn = function(token) { return token == "t" || token == "T"; };
     var nfa = NFA.forToken(fn);
 
@@ -39,6 +39,7 @@ test("Not-accept", function() {
     nfa.begin();
     nfa.consume("x");
     equal(nfa.isFinal(), false);
+    equal(nfa.isError(), true);
     deepEqual(nfa.follow(), []);
 });
 
@@ -254,7 +255,7 @@ test("Complex", function() {
     deepEqual(nfa.follow(), ["a"]);
 });
 
-test("Event not-accept", function() {
+test("Error recovery", function() {
     var digit = function(token) { return /[0-9]/.test(token); };
     var nfa = NFA.concatenation(
         NFA.quantify(NFA.forToken(digit), 4, 4),
@@ -263,7 +264,7 @@ test("Event not-accept", function() {
         NFA.forToken("-"),
         NFA.quantify(NFA.forToken(digit), 2, 2));
 
-    $(nfa).on("not-accept", function(evt) {
+    $(nfa).on("error", function(evt) {
         var follow = nfa.follow();
         if (follow.length == 1 && !(follow[0] instanceof Function)) {
             nfa.consume(follow[0]);
@@ -275,14 +276,17 @@ test("Event not-accept", function() {
     nfa.begin();
     nfa.consume("2014-01-01");
     equal(nfa.isFinal(), true);
+    equal(nfa.isError(), false);
 
     nfa.begin();
     nfa.consume("20140101");
     equal(nfa.isFinal(), true);
+    equal(nfa.isError(), false);
 
     nfa.begin();
     nfa.consume("20-14-01-01");
     equal(nfa.isFinal(), true);
+    equal(nfa.isError(), false);
 });
 
 module("PatternParser");
@@ -417,11 +421,13 @@ test("Complex", function() {
     parser.nfa.begin();
     parser.nfa.consume("xxy-y-");
     equal(parser.nfa.isFinal(), false);
+    equal(parser.nfa.isError(), true);
     deepEqual(parser.nfa.follow(), []);
 
     parser.nfa.begin();
     parser.nfa.consume("xxx-yz");
     equal(parser.nfa.isFinal(), false);
+    equal(parser.nfa.isError(), true);
     deepEqual(parser.nfa.follow(), []);
 });
 
