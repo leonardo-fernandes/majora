@@ -295,7 +295,24 @@ test("Empty", function() {
 });
 
 test("Invalid", function() {
-    throws(function() { new PatternParser("*"); });
+    throws(function() {
+        new PatternParser("*");
+    });
+    throws(function() {
+        new PatternParser("a|+");
+    });
+    throws(function() {
+        new PatternParser("a*?");
+    });
+    throws(function() {
+        new PatternParser("({3,5})");
+    });
+    throws(function() {
+        new PatternParser("(");
+    });
+    throws(function() {
+        new PatternParser(")");
+    });
 });
 
 test("Concatenation", function() {
@@ -370,23 +387,35 @@ test("Other quantifiers", function() {
     deepEqual(parser.nfa.follow(), []);
 });
 
+test("Special literals", function() {
+    var parser = new PatternParser("{23:24}");
+    parser.nfa.consume("{23:24}");
+    equal(parser.nfa.isFinal(), true);
+
+    parser = new PatternParser("]a;b]");
+    parser.nfa.consume("]a;b]");
+    equal(parser.nfa.isFinal(), true);
+});
+
+test("Escape sequences", function() {
+    var parser = new PatternParser("\\(a\\*\\)\\|a\\?\\\\\\.\\{2,3\\}");
+
+    parser.nfa.consume("(a*)|a?\\.{2,3}")
+    equal(parser.nfa.isFinal(), true);
+});
+
 test("Complex", function() {
-    var parser = new PatternParser("((x|y){2,3}-){2}(x|y)(x|y|z)*");
+    var parser = new PatternParser("((x|y){2,3}-){2}.(x|y|z)*");
 
     equal(parser.nfa.isFinal(), false);
     deepEqual(parser.nfa.follow().sort(), ["x", "y"]);
 
-    parser.nfa.consume("xy-xxx-yxxyzz");
+    parser.nfa.consume("xy-xxx-kxxyzz");
     equal(parser.nfa.isFinal(), true);
     deepEqual(parser.nfa.follow().sort(), ["x", "y", "z"]);
 
     parser.nfa.begin();
     parser.nfa.consume("xxy-y-");
-    equal(parser.nfa.isFinal(), false);
-    deepEqual(parser.nfa.follow(), []);
-
-    parser.nfa.begin();
-    parser.nfa.consume("yyx-yy-z");
     equal(parser.nfa.isFinal(), false);
     deepEqual(parser.nfa.follow(), []);
 
