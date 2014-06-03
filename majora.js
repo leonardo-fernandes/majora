@@ -1,9 +1,10 @@
 var NFA = function() {
     this.nodes = [];
     this.initialNode = null;
+    var consumedTokens = "";
     var state = [];
 
-    this.add = function(node, isInitial) {
+    this.add = function(node) {
         this.nodes.push(node);
         return node;
     };
@@ -17,6 +18,7 @@ var NFA = function() {
             }
         }
         state = closure(initials);
+        consumedTokens = "";
     };
 
     this.consume = function(string) {
@@ -47,10 +49,15 @@ var NFA = function() {
         }
 
         state = closure(newState);
+        consumedTokens += token;
 
         var evt = $.Event("consume");
         evt.token = token;
         $(self).triggerHandler(evt);
+    };
+
+    this.getString = function() {
+        return consumedTokens;
     };
 
     this.isFinal = function() {
@@ -90,7 +97,7 @@ var NFA = function() {
             var s = state[i];
             for (var j = 0; j < s.edges.length; j++) {
                 var edge = s.edges[j];
-                if (edge.value !== NFA.EPSILON && follow.indexOf(edge.value) == -1) {
+                if (edge.value !== NFA.Edge.EPSILON && follow.indexOf(edge.value) == -1) {
                     follow.push(edge.value);
                 }
             }
@@ -106,7 +113,7 @@ var NFA = function() {
                 var node = nodes[i];
                 for (var j = 0; j < node.edges.length; j++) {
                     var edge = node.edges[j];
-                    if (edge.value == NFA.EPSILON && nodes.indexOf(edge.to) == -1) {
+                    if (edge.value == NFA.Edge.EPSILON && nodes.indexOf(edge.to) == -1) {
                         nodes.push(edge.to);
                         changed = true;
                     }
@@ -141,8 +148,6 @@ var NFA = function() {
     };
 };
 
-NFA.EPSILON = null;
-
 NFA.Node = function(kind) {
     this.edges = [];
     this.isInitial = (kind || {}).isInitial || false;
@@ -170,6 +175,8 @@ NFA.Edge = function(from, to, value) {
         }
     };
 };
+
+NFA.Edge.EPSILON = null;
 
 
 NFA.empty = function() {
@@ -215,7 +222,7 @@ NFA.concatenation = function() {
                 var nodeFinal = finals[i];
                 for (var j = 0; j < initials.length; j++) {
                     var nodeInitial = initials[j];
-                    nodeFinal.link(nodeInitial, NFA.EPSILON);
+                    nodeFinal.link(nodeInitial, NFA.Edge.EPSILON);
                 }
             }
         };
@@ -240,7 +247,7 @@ NFA.union = function() {
                 var node = other.nodes[i];
                 result.add(node);
                 if (node.isInitial) {
-                    initial.link(node, NFA.EPSILON);
+                    initial.link(node, NFA.Edge.EPSILON);
                     node.isInitial = false;
                 }
             }
@@ -272,9 +279,9 @@ NFA.kleene = function(nfa) {
     var initial = nfa.add(new NFA.Node(NFA.Node.INITIAL_AND_FINAL));
 
     for (var i = 0; i < initials.length; i++) {
-        initial.link(initials[i], NFA.EPSILON);
+        initial.link(initials[i], NFA.Edge.EPSILON);
         for (var j = 0; j < finals.length; j++) {
-            finals[j].link(initials[i], NFA.EPSILON);
+            finals[j].link(initials[i], NFA.Edge.EPSILON);
         }
     }
 
