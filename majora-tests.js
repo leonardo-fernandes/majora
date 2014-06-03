@@ -33,7 +33,7 @@ test("Function token", function() {
     deepEqual(nfa.follow(), []);
 });
 
-test("Not-accept", function() {
+test("Error", function() {
     var nfa = NFA.forToken("T");
 
     nfa.begin();
@@ -41,6 +41,19 @@ test("Not-accept", function() {
     equal(nfa.isFinal(), false);
     equal(nfa.isError(), true);
     deepEqual(nfa.follow(), []);
+});
+
+test("Consumed string", function() {
+    var nfa = NFA.concatenation(
+        NFA.kleene(NFA.forToken("a")),
+        NFA.forToken(function(token) { return true; }),
+        NFA.forToken("b")
+    );
+
+    nfa.begin();
+    nfa.consume("aaaxb");
+    equal(nfa.isFinal(), true);
+    equal(nfa.getString(), "aaaxb");
 });
 
 test("Concatenation", function() {
@@ -199,11 +212,11 @@ test("Quantify", function() {
 });
 
 test("Complex", function() {
-    var nfa1 = NFA.concatenation(NFA.concatenation(NFA.forToken("a"), NFA.forToken("b")), NFA.forToken("c")) // abc
+    var nfa1 = NFA.concatenation(NFA.forToken("a"), NFA.forToken("b"), NFA.forToken("c")); // abc
     var nfa2 = NFA.concatenation(NFA.forToken("a"), NFA.kleene(NFA.forToken("b"))); // ab*
     var nfa3 = NFA.kleene(NFA.concatenation(NFA.forToken("a"), NFA.forToken("b"))); // (ab)*
 
-    var nfa = NFA.union(nfa1, NFA.union(nfa2, nfa3)); // abc | ab* | (ab)*
+    var nfa = NFA.union(nfa1, nfa2, nfa3); // abc | ab* | (ab)*
 
     nfa.begin();
     equal(nfa.isFinal(), true);
@@ -429,6 +442,58 @@ test("Complex", function() {
     equal(parser.nfa.isFinal(), false);
     equal(parser.nfa.isError(), true);
     deepEqual(parser.nfa.follow(), []);
+});
+
+test("Follow prediction", function() {
+    var parser = new PatternParser("[:digit:]{2}/[:digit:]{2}/[:digit:]");
+
+    $(parser.nfa).on("consume", function(evt) {
+        if (!this.isFinal()) {
+            var follow = this.follow();
+            if (follow.length == 1 && !(follow[0] instanceof Function)) {
+                this.consume(follow[0]);
+            }
+        }
+    });
+
+    parser.nfa.consume("01012014");
+    equal(parser.nfa.getString(), "01/01/2014");
+});
+
+test("Don't follow infinite prediction", function() {
+    var parser = new PatternParser("a*");
+
+    $(parser.nfa).on("consume", function(evt) {
+        if (!this.isFinal()) {
+            var follow = this.follow();
+            if (follow.length == 1 && !(follow[0] instanceof Function)) {
+                this.consume(follow[0]);
+            }
+        }
+    });
+
+    parser.nfa.consume("aaa");
+    equal(parser.nfa.getString(), "aaa");
+});
+
+test("Prediction with quantifier", function() {
+    var parser = new PatternParser("ab*ba");
+
+    $(parser.nfa).on("consume", function(evt) {
+        if (!this.isFinal()) {
+            var follow = this.follow();
+            if (follow.length == 1 && !(follow[0] instanceof Function)) {
+                this.consume(follow[0]);
+            }
+        }
+    });
+
+    parser.nfa.consume("a");
+    equal(parser.nfa.getString(), "ab");
+    parser.nfa.consume("b");
+    equal(parser.nfa.getString(), "abb");
+    parser.nfa.consume("a");
+    equal(parser.nfa.getString(), "abba");
 });
 
 /* vim: set et ts=4 sw=4: */
